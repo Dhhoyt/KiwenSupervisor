@@ -18,6 +18,6 @@ public class Supervisor {
         this.server = server;
         this.logger = logger;
 
-        logger.info("Hello there! I made my first plugin with Velocity.");
+        QueueManager.init();
     }
 }
