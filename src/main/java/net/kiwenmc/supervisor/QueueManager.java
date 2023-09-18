@@ -20,13 +20,13 @@ public class QueueManager {
     private final Map<Integer, Party> parties = new HashMap<>(); // A hashset wouldn't work here because
     private final Map<UUID, Integer> playerPartyId = new HashMap<>();
 
-    final long inviteTimeout = 60 * 5 * 1000;
+    final long inviteTimeout = 1000;
 
     private int nextFreeParty = 0;
 
     private QueueManager() {
         for (GameType i : GameType.values()) {
-            instance.queue.put(i, new ArrayList<Integer>());
+            queue.put(i, new ArrayList<Integer>());
         }
     }
 
@@ -102,6 +102,11 @@ public class QueueManager {
             }
         }
         playerPartyId.remove(player);
+    }
+
+    public Party getParty(UUID player) {
+        int partyID = playerPartyId.get(player);
+        return parties.get(partyID);
     }
 
     /**
@@ -266,8 +271,11 @@ public class QueueManager {
     public List<RemovedInvite> clearOldInvites() {
         List<RemovedInvite> removedInvites = new ArrayList<>();
         long time = System.currentTimeMillis();
+        System.out.println(time);
         for (Entry<Integer, Party> party : parties.entrySet()) {
             for (Entry<UUID, Long> invite : party.getValue().invites.entrySet()) {
+                System.out.println(invite.getValue());
+
                 if (invite.getValue() + inviteTimeout < time) {
                     removedInvites.add(new RemovedInvite(party.getValue(), invite.getKey()));
                     party.getValue().invites.remove(invite.getKey());

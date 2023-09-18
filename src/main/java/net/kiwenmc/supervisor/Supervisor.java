@@ -5,6 +5,8 @@ import com.velocitypowered.api.command.BrigadierCommand;
 import com.velocitypowered.api.command.CommandManager;
 import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.event.Subscribe;
+import com.velocitypowered.api.event.connection.DisconnectEvent;
+import com.velocitypowered.api.event.connection.PostLoginEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.proxy.ProxyServer;
@@ -45,20 +47,30 @@ public class Supervisor {
         BrigadierCommand partyCommand = PartyCommand.createBrigadierCommand(server);
         commandManager.register(commandMeta, partyCommand);
 
+        // Register events
+        server.getEventManager().register(this, PostLoginEvent.class, loginEvent -> {
+            QueueManager.getInstance().newParty(loginEvent.getPlayer().getUniqueId());
+        });
+        server.getEventManager().register(this, DisconnectEvent.class, disconnectEvent -> {
+            QueueManager.getInstance().leaveParty(disconnectEvent.getPlayer().getUniqueId());
+        });
+
         // Start the system that clears the old player invites
         Runnable clearInvites = new Runnable() {
             public void run() {
                 List<RemovedInvite> oldInvites = QueueManager.getInstance().clearOldInvites();
+                System.out.println("Clearing invites");
                 for (RemovedInvite i : oldInvites) {
                     // TODO: Add formatting so the names are displayed
                     i.invitingParty.notify(
                             Component.text("The invite to that one party has timed out", NamedTextColor.RED), server);
                     server.getPlayer(i.invitedPlayer).ifPresent(player -> player.sendMessage(
                             Component.text("The invite from that one party has timed out", NamedTextColor.RED)));
+
                 }
             }
         };
         ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
-        executor.scheduleAtFixedRate(clearInvites, 5, 5, TimeUnit.SECONDS);
+        executor.scheduleAtFixedRate(clearInvites, 0, 1, TimeUnit.SECONDS);
     }
 }
