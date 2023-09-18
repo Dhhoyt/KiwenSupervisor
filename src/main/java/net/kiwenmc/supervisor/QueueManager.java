@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Map.Entry;
 
 import net.kiwenmc.supervisor.datastructures.Party;
 import net.kiwenmc.supervisor.enums.GameType;
@@ -16,8 +17,12 @@ public class QueueManager {
     private static QueueManager instance;
 
     private final Map<GameType, ArrayList<Integer>> queue = new EnumMap<>(GameType.class);
-    private final ArrayList<Party> parties = new ArrayList<>();
+    private final Map<Integer, Party> parties = new HashMap<>(); // A hashset wouldn't work here because
     private final Map<UUID, Integer> playerPartyId = new HashMap<>();
+
+    final long inviteTimeout = 60 * 5 * 1000;
+
+    private int nextFreeParty = 0;
 
     private QueueManager() {
         for (GameType i : GameType.values()) {
@@ -40,7 +45,7 @@ public class QueueManager {
      * @return 0 if the players position hasn't changed, otherwise the new queue
      *         position
      */
-    public int requestGame(UUID player, GameType game) {
+    public int queueGame(UUID player, GameType game) {
         int partyID = playerPartyId.get(player);
         Party party = parties.get(partyID);
         // Party is already in that queue
@@ -63,17 +68,9 @@ public class QueueManager {
      * @param player the leader of the new party
      */
     public void newParty(UUID player) {
-        // Look for a blank spot
-        for (int i = 0; i < parties.size(); i++) {
-            if (parties.get(i) == null) {
-                parties.set(i, new Party(player));
-                playerPartyId.put(player, i);
-                return;
-            }
-        }
-        // Theres no blank
-        parties.add(new Party(player));
-        playerPartyId.put(player, parties.size() - 1);
+        parties.put(nextFreeParty, new Party(player));
+        playerPartyId.put(player, nextFreeParty);
+        nextFreeParty += 1;
     }
 
     /**
@@ -89,6 +86,12 @@ public class QueueManager {
         newParty.players.add(player);
     }
 
+    /**
+     * Makes a player leave a party. This function does not create a new party as it
+     * may be called when a player leaves or when a player joins an existing party.
+     * 
+     * @param player The player that is getting removed for the party
+     */
     public void leaveParty(UUID player) {
         Party party = parties.get(playerPartyId.get(player));
         party.players.remove(player);
@@ -101,21 +104,38 @@ public class QueueManager {
         playerPartyId.remove(player);
     }
 
+    /**
+     * Returns true if the player is the only player in the party
+     * 
+     * @param player The player to check
+     * @return true if the player is the only player in the party
+     */
     public boolean isOnlyMember(UUID player) {
         return parties.get(playerPartyId.get(player)).players.size() == 1;
     }
 
+    /**
+     * Returns true if the player is the leader of their party
+     * 
+     * @param player The player to check
+     * @return true if the player is the leader of their party
+     */
     public boolean isLeader(UUID player) {
         int partyID = playerPartyId.get(player);
         return parties.get(partyID).players.get(0) == player;
     }
 
+    /**
+     * Disbands a party and puts all the players in a new party
+     * 
+     * @param player Any player in the party
+     */
     public void disband(UUID player) {
         Integer partyID = playerPartyId.get(player);
         for (UUID i : parties.get(partyID).players) {
             newParty(i);
         }
-        parties.set(partyID, null);
+        parties.remove(partyID);
     }
 
     /**
@@ -139,7 +159,13 @@ public class QueueManager {
         }
     }
 
-    public List<Party> getPlayers(GameType game) {
+    /**
+     * Gets parties queueing for a game
+     * 
+     * @param game What game to check for
+     * @return List of parties queueing for a game
+     */
+    public List<Party> getQueueingParties(GameType game) {
         List<Party> players = new ArrayList<>();
         int numPlayers = 0;
         for (Integer i : queue.get(game)) {
@@ -155,6 +181,16 @@ public class QueueManager {
         return players;
     }
 
+    public void notifyParty() {
+
+    }
+
+    /**
+     * Returns the longest queue of a game that uses the specified size.
+     * 
+     * @param serverSize The specified size
+     * @return The gametype with the longest wait
+     */
     public GameType getLongestWait(ServerSize serverSize) {
         GameType longestQueue = null;
         int longestQueueSize = 0;
@@ -173,6 +209,12 @@ public class QueueManager {
         return longestQueue;
     }
 
+    /**
+     * Gets the number of players waiting in a queue
+     * 
+     * @param type The game type
+     * @return The number of players waiting in that queue
+     */
     public int getQueueSize(GameType type) {
         int size = 0;
         for (int i : queue.get(type)) {
@@ -181,4 +223,57 @@ public class QueueManager {
         return size;
     }
 
+    /**
+     * Adds an invite. The UUID who is sending it must be privileged as this method
+     * does not check
+     * 
+     * @param from The player sending the invite
+     * @param to   The player being invited
+     */
+    public void addInvite(UUID from, UUID to) {
+        long time = System.currentTimeMillis();
+        int partyID = playerPartyId.get(from);
+        Party party = parties.get(partyID);
+        party.invites.put(to, time);
+    }
+
+    /**
+     * 
+     */
+    public void acceptInvite(UUID inviting, UUID accepting) {
+        int partyID = playerPartyId.get(inviting);
+        Party party = parties.get(partyID);
+        if (party.invites.containsKey(inviting)) {
+
+        }
+    }
+
+    public final class RemovedInvite {
+        Party invitingParty;
+        UUID invitedPlayer;
+
+        private RemovedInvite(Party invitingParty, UUID invitedPlayer) {
+            this.invitingParty = invitingParty;
+            this.invitedPlayer = invitedPlayer;
+        }
+    }
+
+    /**
+     * Clears and returns the invites that have timed out
+     * 
+     * @return The invites that have timed out
+     */
+    public List<RemovedInvite> clearOldInvites() {
+        List<RemovedInvite> removedInvites = new ArrayList<>();
+        long time = System.currentTimeMillis();
+        for (Entry<Integer, Party> party : parties.entrySet()) {
+            for (Entry<UUID, Long> invite : party.getValue().invites.entrySet()) {
+                if (invite.getValue() + inviteTimeout < time) {
+                    removedInvites.add(new RemovedInvite(party.getValue(), invite.getKey()));
+                    party.getValue().invites.remove(invite.getKey());
+                }
+            }
+        }
+        return removedInvites;
+    }
 }
