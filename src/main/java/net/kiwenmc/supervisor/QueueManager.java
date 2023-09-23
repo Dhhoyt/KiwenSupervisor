@@ -77,13 +77,13 @@ public class QueueManager {
      * Transfers a player to a new party
      * 
      * @param player    the id of the player joinng the other party
-     * @param joiningID the player of leader of the new party
+     * @param joiningID the id of a player who is already in the party
      */
-    public void joinParty(UUID player, UUID joiningID) {
-        leaveParty(player);
-        playerPartyId.put(player, playerPartyId.get(joiningID));
-        Party newParty = parties.get(playerPartyId.get(joiningID));
-        newParty.players.add(player);
+    public void joinParty(UUID newMember, UUID partyMember) {
+        leaveParty(newMember);
+        playerPartyId.put(newMember, playerPartyId.get(partyMember));
+        Party newParty = parties.get(playerPartyId.get(partyMember));
+        newParty.players.add(newMember);
     }
 
     /**
@@ -186,10 +186,6 @@ public class QueueManager {
         return players;
     }
 
-    public void notifyParty() {
-
-    }
-
     /**
      * Returns the longest queue of a game that uses the specified size.
      * 
@@ -243,14 +239,16 @@ public class QueueManager {
     }
 
     /**
+     * Finds if an invite exists
      * 
+     * @param inviting  The player who sent the invite from the party
+     * @param accepting The player accepting the invite to the pary
+     * @return True if the inviting player's party has invited the player accepting
      */
-    public void acceptInvite(UUID inviting, UUID accepting) {
+    public boolean exisitsInvite(UUID accepting, UUID inviting) {
         int partyID = playerPartyId.get(inviting);
         Party party = parties.get(partyID);
-        if (party.invites.containsKey(inviting)) {
-
-        }
+        return party.invites.containsKey(accepting);
     }
 
     public final class RemovedInvite {
